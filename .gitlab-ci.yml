@@ -1,0 +1,14 @@
+image: hub.realmanual.ru/images/docker
+variables:
+  DOCKER_BASEIMAGE: postgres:16-alpine
+  DOCKER_MAINTAINER: vasyakrg@gmail.com
+  DOCKER_IMAGE_NAME: backup
+  BUILD_SCRIPT: ci/build.sh
+  GIT_SUBMODULE_STRATEGY: none
+
+build:
+  script:
+    - export VERSION=$(cat VERSION)
+    - export DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME}
+    - export DOCKER_IMAGE_TAG=$VERSION
+    - chmod +x "${BUILD_SCRIPT}" && "./${BUILD_SCRIPT}"
