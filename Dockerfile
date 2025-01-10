@@ -1,11 +1,13 @@
-ARG DOCKER_BASEIMAGE
+ARG DOCKER_BASEIMAGE=postgres:16-alpine
 FROM ${DOCKER_BASEIMAGE}
 
-RUN apk add --no-cache \
-  python3 \
-  py3-pip \
-  && pip3 install awscli \
-  && mkdir /backup
+RUN apk add --no-cache python3 py3-pip && \
+  apk add --no-cache bash curl && \
+  python3 -m ensurepip && \
+  pip3 install --upgrade pip && \
+  pip3 install awscli && \
+  rm -rf /var/cache/apk/* && \
+  mkdir /backup
 
 ENV AWS_DEFAULT_REGION=us-east-1
 
