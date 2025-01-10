@@ -4,7 +4,7 @@ FROM ${DOCKER_BASEIMAGE}
 RUN apk add --no-cache \
   python3 \
   py3-pip \
-  && pip install awscli \
+  && pip3 install awscli \
   && mkdir /backup
 
 ENV AWS_DEFAULT_REGION=us-east-1
