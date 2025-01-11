@@ -1,90 +1,192 @@
-# pgdump-s3
+# Скрипт для резервного копирования PostgreSQL в S3
 
-[![dockeri.co](http://dockeri.co/image/bartversluijs/pgdump-s3)](https://hub.docker.com/r/bartversluijs/pgdump-s3/)
+## Описание
 
-> Docker Image with Alpine Linux, pg_dump and awscli for backup postgres database to s3
+- Скрипт автоматизирует резервное копирование баз данных PostgreSQL и их сохранение в S3-совместимом хранилище.
+- Поддерживается однократный запуск, работа по расписанию через cron, исключение баз данных, управление ротацией старых бэкапов и сжатие.
 
-# Use
+## Возможности
 
-## Periodic backup
+* Резервное копирование всех баз данных или указанных вручную.
+* Исключение определённых баз данных из бэкапа.
+* Сохранение дампов в формате sql или -Fc.
+* Сжатие дампов с использованием pigz.
+* Сохранение бэкапов в S3-совместимом хранилище.
+* Ротация старых бэкапов по времени или количеству версий.
+* Автоматическая настройка cron задачи для регулярного резервного копирования.
 
-Run every day at 2 am
+## Переменные окружения
+
+### Настройки PostgreSQL
+
+| Переменная         | Описание                                        | Значение по умолчанию |
+|--------------------|-------------------------------------------------|-----------------------|
+| `PGHOST`           | Хост PostgreSQL                                 | `localhost`           |
+| `PGPORT`           | Порт PostgreSQL                                 | `5432`                |
+| `PGUSER`           | Пользователь PostgreSQL                         | `postgres`            |
+| `PGPASSWORD`       | Пароль PostgreSQL                               | `password`            |
+| `BACKUP_DATABASES` | Базы данных для бэкапа (`all` или перечисление) | `all`                 |
+| `EXCLUDE_DB`       | Базы данных, которые нужно исключить            | -                     |
+
+---
+
+### Настройки S3
+
+| Переменная             | Описание                          | Значение по умолчанию |
+|------------------------|-----------------------------------|-----------------------|
+| `S3_BUCKET`            | Имя S3 бакета                     | -                     |
+| `S3_ENDPOINT`          | URL S3 совместимого хранилища     | -                     |
+| `S3_ACCESS_KEY_ID`     | Ключ доступа к S3                 | -                     |
+| `S3_SECRET_ACCESS_KEY` | Секретный ключ доступа к S3       | -                     |
+| `S3_REGION`            | Регион S3                         | -                     |
+| `S3_PATH`              | Путь внутри S3 бакета             | `backups`             |
+| `S3_PATH_STYLE`        | Использование `path-style` режима | `true`                |
+
+---
+
+### Настройки бэкапа
+
+| Переменная              | Описание                                      | Значение по умолчанию |
+|-------------------------|-----------------------------------------------|-----------------------|
+| `BACKUP_TYPE`           | Тип дампа: `sql` или `dump`                   | `sql`                 |
+| `BACKUP_RETENTION_DAYS` | Удаление бэкапов старше указанного числа дней | `30`                  |
+| `BACKUP_MAX_VERSIONS`   | Количество последних версий для хранения      | `10`                  |
+
+---
+
+### Настройки cron
+
+| Переменная             | Описание                                   | Значение по умолчанию |
+|------------------------|--------------------------------------------|-----------------------|
+| `BACKUP_CRON_SCHEDULE` | Cron расписание для автоматических бэкапов | -                     |
+
+---
+
+## Использование
+
+### Однократный запуск
+
+1. Выполните команду:
 
 ```bash
-docker run -d --name pgdump \
-  -e "POSTGRESQL_URI=postgres://user:pass@host:port/dbname"
-  -e "AWS_ACCESS_KEY_ID=your_aws_access_key"
-  -e "AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key"
-  -e "AWS_DEFAULT_REGION=us-east-1"
-  -e "S3_BUCKET=your_aws_bucket"
-  -e "S3_PATH=/pg_dump"
-  -e "BACKUP_CRON_SCHEDULE=0 2 * * *"
-  bartversluijs/pgdump-s3
+docker run --rm \
+    --env-file .env \
+    postgres-backup
 ```
 
-## Immediate backup
+2. Скрипт выполнит резервное копирование всех баз данных, загрузит их в S3 и завершит работу.
+
+### Запуск через cron
+
+1. Убедитесь, что указана переменная BACKUP_CRON_SCHEDULE (например, 0 2 * * *).
+2. Запустите контейнер:
 
 ```bash
-docker run -d --name pgdump \
-  -e "POSTGRESQL_URI=postgres://user:pass@host:port/dbname"
-  -e "AWS_ACCESS_KEY_ID=your_aws_access_key"
-  -e "AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key"
-  -e "AWS_DEFAULT_REGION=us-east-1"
-  -e "S3_BUCKET=your_aws_bucket"
-  -e "S3_PATH=/pg_dump"
-  bartversluijs/pgdump-s3
+docker run --rm \
+    --env-file .env \
+    postgres-backup
 ```
 
-# Options
+3. Контейнер настроит cron и будет ожидать выполнения задач.
 
-| Environment variable | Description |
-| --- | --- |
-| `POSTGRESQL_URI` | URI of the PostgreSQL instance |
-| `AWS_ACCESS_KEY_ID` | Access key ID of your S3 storage |
-| `AWS_SECRET_ACCESS_KEY` | Secret access key of your S3 storage |
-| `AWS_DEFAULT_REGION` | Region of your S3 storage |
-| `S3_BUCKET` | Bucket name |
-| `S3_PATH` | Path of where to store the dump |
-| `S3_ENDPOINT` | Endpoint of your S3 storage |  
-| `BACKUP_CRON_SCHEDULE` | Cron schedule |
+### Запуск в docker-compose.yaml
 
-  # IAM Policity
-
-You need to add a user with the following policies. Be sure to change `your_bucket` by the correct.
-
-```xml
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "Stmt1412062044000",
-            "Effect": "Allow",
-            "Action": [
-                "s3:PutObject",
-                "s3:PutObjectAcl"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your_bucket/*"
-            ]
-        },
-        {
-            "Sid": "Stmt1412062128000",
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListBucket"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your_bucket"
-            ]
-        }
-    ]
-}
+```yaml
+services:
+  postgres-backup:
+    image: psql-backup:latest
+    container_name: postgres-backup
+    env_file:
+      - .env
 ```
 
-## Credits
+## Пример .env файла
 
-[drivetech/pgdump-s3](https://github.com/Drivetech/pgdump-s3)
+```bash
+# PostgreSQL настройки
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=secret
 
-## License
+# Базы для бэкапа
+BACKUP_DATABASES=all
+EXCLUDE_DB=template0,template1
 
-[MIT](https://tldrlegal.com/license/mit-license)
+# Настройки S3
+S3_BUCKET=my-backup-bucket
+S3_ENDPOINT=https://s3.example.com
+S3_ACCESS_KEY_ID=my-access-key
+S3_SECRET_ACCESS_KEY=my-secret-key
+S3_REGION=us-east-1
+S3_PATH_STYLE=true
+S3_PATH=backups
+
+# Настройки бэкапа
+BACKUP_TYPE=sql
+
+# Ротация
+BACKUP_RETENTION_DAYS=30
+BACKUP_MAX_VERSIONS=10
+
+# Cron расписание
+BACKUP_CRON_SCHEDULE=0 2 * * *
+```
+
+## Логика работы
+
+1. Однократный запуск:
+
+- Выполняется создание дампа и его отправка в S3.
+- Применяется ротация старых бэкапов (если указаны параметры ротации).
+
+2. Запуск через cron:
+
+- Контейнер добавляет cron задачу (если её ещё нет).
+- При наступлении времени cron запускает скрипт с аргументом cron, который выполняет только backup и rotate_backups.
+
+## Примеры
+
+Однократный бэкап:
+
+```basg
+docker run --rm \
+    -e PGHOST=db.example.com \
+    -e PGUSER=admin \
+    -e PGPASSWORD=secret \
+    -e S3_BUCKET=my-bucket \
+    -e BACKUP_TYPE=sql \
+    -e BACKUP_DATABASES=mydb1,mydb2 \
+    postgres-backup
+```
+
+Автоматический бэкап через cron:
+
+```bash
+docker run --rm \
+    -e BACKUP_CRON_SCHEDULE="0 3 * * *" \
+    --env-file .env \
+    postgres-backup
+```
+
+## Логирование
+
+Скрипт выводит:
+
+- Успешные действия: [ OK ] (зелёный цвет).
+- Предупреждения: [ Warn ] (жёлтый цвет).
+- Ошибки: [ Fail ] (красный цвет).
+
+### Пример вывода
+
+```bash
+[...] Генерация конфигурации rclone
+[ OK ] Конфигурация rclone создана
+[...] Начало процесса создания бэкапа
+[ OK ] SQL бэкап для базы данных mydb1 создан
+[...] Копирование бэкапов в S3
+[ OK ] Бэкапы скопированы в S3
+[...] Ротация по количеству версий
+[ OK ] Ротация выполнена
+[ OK ] Однократный запуск завершен
+```

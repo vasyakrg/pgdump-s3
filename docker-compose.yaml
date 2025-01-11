@@ -1,0 +1,9 @@
+services:
+  postgres-backup:
+    # image: psql-backup:latest
+    container_name: postgres-backup
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
