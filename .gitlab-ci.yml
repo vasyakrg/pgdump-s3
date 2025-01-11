@@ -2,6 +2,7 @@ image: hub.realmanual.ru/images/docker
 variables:
   DOCKER_BASEIMAGE: postgres:16-alpine
   DOCKER_MAINTAINER: vasyakrg@gmail.com
+  DOCKER_NO_BRANCH_TAG: 1
   BUILD_SCRIPT: ci/build.sh
   GIT_SUBMODULE_STRATEGY: none
 
