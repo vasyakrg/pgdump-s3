@@ -190,3 +190,85 @@ docker run --rm \
 [ OK ] Ротация выполнена
 [ OK ] Однократный запуск завершен
 ```
+
+## Запуск в k8s как CronJob
+
+1. Создание секрета для PostgreSQL и S3
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-backup-secret
+  namespace: default
+type: Opaque
+data:
+  POSTGRES_USER: cG9zdGdyZXM=  # base64 от postgres
+  POSTGRES_PASSWORD: cG9zdGdyZXM=  # base64 от postgres
+  POSTGRES_HOST: cG9zdGdyZXM=  # base64 от postgres
+  POSTGRES_PORT: NTQzMg==  # base64 от 5432
+  S3_BUCKET: c3luMS1wc3Fs  # base64 от syn1-psql
+  S3_ENDPOINT: aHR0cHM6Ly9zMy1nYXRlLmRvbWFpbi5ydQ==  # base64 от https://s3-gate.domain.ru
+  S3_ACCESS_KEY_ID: dGVzdA==  # base64 от test
+  S3_SECRET_ACCESS_KEY: dGVzdA==  # base64 от test
+  S3_REGION: cnUtbXNr  # base64 от ru-msk
+  S3_PATH_STYLE: dHJ1ZQ==  # base64 от true
+  S3_PATH: YmFja3Vwcw==  # base64 от backups
+```
+
+2. Создание ConfigMap для настроек бэкапа
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-config
+  namespace: default
+data:
+  BACKUP_DATABASES: "all"
+  EXCLUDE_DB: "postgres"
+  BACKUP_TYPE: "sql"
+  BACKUP_RETENTION_DAYS: "30"
+  BACKUP_MAX_VERSIONS: "10"
+```
+
+3. Создание CronJob
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: default
+spec:
+  schedule: "0 3 * * *"  # Запуск каждый день в 3 часа ночи
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: postgres-backup
+            image: hub.realmanual.ru/pub/pgdump-s3:1.0.0
+            envFrom:
+            - secretRef:
+                name: postgres-backup-secret
+            - configMapRef:
+                name: postgres-backup-config
+          restartPolicy: OnFailure
+```
+
+4. Применение манифестов
+
+Сохраняем манифесты в файлы, например:
+
+- secret.yaml
+- configmap.yaml
+- cronjob.yaml
+
+Применяем их:
+
+```bash
+kubectl apply -f secret.yaml
+kubectl apply -f configmap.yaml
+kubectl apply -f cronjob.yaml
+```
