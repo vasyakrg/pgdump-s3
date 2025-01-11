@@ -24,10 +24,10 @@ log_step() {
 }
 
 # Переменные окружения
-: "${PGHOST:=localhost}"
-: "${PGPORT:=5432}"
-: "${PGUSER:=postgres}"
-: "${PGPASSWORD:=password}"
+: "${POSTGRES_HOST:=localhost}"
+: "${POSTGRES_PORT:=5432}"
+: "${POSTGRES_USER:=postgres}"
+: "${POSTGRES_PASSWORD:=password}"
 : "${BACKUP_CRON_SCHEDULE:=}"
 : "${BACKUP_TYPE:=sql}" # sql или -Fc
 : "${BACKUP_DATABASES:=all}" # all или перечисленные базы через запятую
@@ -61,6 +61,9 @@ EOF
   log_success "Конфигурация rclone создана"
 }
 
+# Устанавливаем переменные окружения для pg_dump
+export PGPASSWORD=${POSTGRES_PASSWORD}
+
 # Создание бэкапа
 backup() {
     log_step "Начало процесса создания бэкапа"
@@ -68,10 +71,12 @@ backup() {
     BACKUP_DIR="/tmp/backups/${TIMESTAMP}"
     mkdir -p "${BACKUP_DIR}"
 
+    PSQL_URI="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}"
+
 
     if [ "${BACKUP_DATABASES}" == "all" ]; then
         log_step "Получение списка всех баз данных"
-        DATABASES=$(psql -tAc "SELECT datname FROM pg_database WHERE datistemplate = false;") || log_fail "Не удалось получить список баз данных"
+        DATABASES=$(psql "${PSQL_URI}" -tAc "SELECT datname FROM pg_database WHERE datistemplate = false;") || log_fail "Не удалось получить список баз данных"
         if [ -z "${DATABASES}" ]; then
             log_warning "На сервере нет ни одной базы данных. Работа завершена."
             exit 0
@@ -113,11 +118,11 @@ backup() {
 
         if [ "${BACKUP_TYPE}" == "sql" ]; then
             log_step "Создание SQL бэкапа для базы данных ${DB}"
-            pg_dump -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
+            pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
             log_success "SQL бэкап для базы данных ${DB} создан"
         else
             log_step "Создание бэкапа для базы данных ${DB} в формате custom"
-            pg_dump -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -Fc "${DB}" -f "${BACKUP_FILE}" || log_fail "Не удалось создать бэкап базы ${DB}"
+            pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -Fc "${DB}" -f "${BACKUP_FILE}" || log_fail "Не удалось создать бэкап базы ${DB}"
             log_success "Бэкап для базы данных ${DB} в формате custom создан"
         fi
     done
