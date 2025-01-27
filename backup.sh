@@ -241,35 +241,40 @@ restore() {
                 DECLARE
                     r RECORD;
                 BEGIN
-                    -- Отключаем только пользовательские триггеры
+                    -- Отключаем только пользовательские триггеры на пользовательских таблицах
                     FOR r IN (
                         SELECT
                             tgname,
                             relname as tablename
                         FROM pg_trigger t
                         JOIN pg_class c ON t.tgrelid = c.oid
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
                         WHERE NOT t.tgisinternal
-                        AND c.relnamespace = 'public'::regnamespace
+                        AND n.nspname = 'public'
+                        AND c.relowner > 10000  -- Пропускаем системные объекты
                     ) LOOP
                         EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' DISABLE TRIGGER ' || quote_ident(r.tgname);
                     END LOOP;
 
-                    -- Очищаем таблицы в правильном порядке (сначала дочерние)
+                    -- Очищаем только пользовательские таблицы в правильном порядке
                     FOR r IN (
                         WITH RECURSIVE deps AS (
                             SELECT
                                 c.relname as tablename,
                                 0 as level
                             FROM pg_class c
+                            JOIN pg_namespace n ON c.relnamespace = n.oid
                             LEFT JOIN pg_constraint fk ON fk.confrelid = c.oid
                             WHERE c.relkind = 'r'
-                            AND c.relnamespace = 'public'::regnamespace
+                            AND n.nspname = 'public'
+                            AND c.relowner > 10000  -- Пропускаем системные объекты
                             AND fk.confrelid IS NULL
                             UNION ALL
                             SELECT
                                 c.relname,
                                 d.level + 1
                             FROM pg_class c
+                            JOIN pg_namespace n ON c.relnamespace = n.oid
                             JOIN pg_constraint fk ON fk.confrelid = c.oid
                             JOIN deps d ON d.tablename = (
                                 SELECT relname
@@ -277,7 +282,8 @@ restore() {
                                 WHERE oid = fk.conrelid
                             )
                             WHERE c.relkind = 'r'
-                            AND c.relnamespace = 'public'::regnamespace
+                            AND n.nspname = 'public'
+                            AND c.relowner > 10000  -- Пропускаем системные объекты
                         )
                         SELECT DISTINCT tablename, level
                         FROM deps
@@ -293,8 +299,10 @@ restore() {
                             relname as tablename
                         FROM pg_trigger t
                         JOIN pg_class c ON t.tgrelid = c.oid
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
                         WHERE NOT t.tgisinternal
-                        AND c.relnamespace = 'public'::regnamespace
+                        AND n.nspname = 'public'
+                        AND c.relowner > 10000  -- Пропускаем системные объекты
                     ) LOOP
                         EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' ENABLE TRIGGER ' || quote_ident(r.tgname);
                     END LOOP;
