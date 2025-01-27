@@ -217,11 +217,13 @@ restore() {
 
     # Восстанавливаем базы данных
     for BACKUP_FILE in "${RESTORE_DIR}"/*; do
-        DB_NAME=$(basename "${BACKUP_FILE}" | sed 's/\.[^.]*$//')
+        DB_NAME=$(basename "${BACKUP_FILE}" | sed -E 's/\.(sql\.gz|Fc|custom)$//')
+        log_step "Найдена база данных ${DB_NAME}"
 
         # Проверяем, нужно ли восстанавливать эту базу
         if [ -n "${RESTORE_DATABASES}" ]; then
             if ! echo "${RESTORE_DATABASES}" | grep -q "${DB_NAME}"; then
+                log_step "Пропуск базы ${DB_NAME} (не указана в RESTORE_DATABASES)"
                 continue
             fi
         fi
@@ -237,7 +239,7 @@ restore() {
         # Восстановление в зависимости от формата
         if [[ "${BACKUP_FILE}" == *.sql.gz ]]; then
             pigz -dc "${BACKUP_FILE}" | psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
-        elif [[ "${BACKUP_FILE}" == *.Fc ]]; then
+        elif [[ "${BACKUP_FILE}" == *.Fc || "${BACKUP_FILE}" == *.custom ]]; then
             pg_restore -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" --clean --if-exists "${BACKUP_FILE}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
         fi
 
