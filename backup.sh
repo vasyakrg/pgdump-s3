@@ -283,7 +283,7 @@ restore() {
                         FROM deps
                         ORDER BY level DESC
                     ) LOOP
-                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename);
+                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
                     END LOOP;
 
                     -- Включаем пользовательские триггеры обратно
