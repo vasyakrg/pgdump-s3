@@ -241,19 +241,62 @@ restore() {
                 DECLARE
                     r RECORD;
                 BEGIN
-                    -- Отключаем все триггеры
-                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' DISABLE TRIGGER ALL';
+                    -- Отключаем только пользовательские триггеры
+                    FOR r IN (
+                        SELECT
+                            tgname,
+                            relname as tablename
+                        FROM pg_trigger t
+                        JOIN pg_class c ON t.tgrelid = c.oid
+                        WHERE NOT t.tgisinternal
+                        AND c.relnamespace = 'public'::regnamespace
+                    ) LOOP
+                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' DISABLE TRIGGER ' || quote_ident(r.tgname);
                     END LOOP;
 
-                    -- Очищаем все таблицы
-                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+                    -- Очищаем таблицы в правильном порядке (сначала дочерние)
+                    FOR r IN (
+                        WITH RECURSIVE deps AS (
+                            SELECT
+                                c.relname as tablename,
+                                0 as level
+                            FROM pg_class c
+                            LEFT JOIN pg_constraint fk ON fk.confrelid = c.oid
+                            WHERE c.relkind = 'r'
+                            AND c.relnamespace = 'public'::regnamespace
+                            AND fk.confrelid IS NULL
+                            UNION ALL
+                            SELECT
+                                c.relname,
+                                d.level + 1
+                            FROM pg_class c
+                            JOIN pg_constraint fk ON fk.confrelid = c.oid
+                            JOIN deps d ON d.tablename = (
+                                SELECT relname
+                                FROM pg_class
+                                WHERE oid = fk.conrelid
+                            )
+                            WHERE c.relkind = 'r'
+                            AND c.relnamespace = 'public'::regnamespace
+                        )
+                        SELECT DISTINCT tablename
+                        FROM deps
+                        ORDER BY level DESC
+                    ) LOOP
+                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename);
                     END LOOP;
 
-                    -- Включаем триггеры обратно
-                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' ENABLE TRIGGER ALL';
+                    -- Включаем пользовательские триггеры обратно
+                    FOR r IN (
+                        SELECT
+                            tgname,
+                            relname as tablename
+                        FROM pg_trigger t
+                        JOIN pg_class c ON t.tgrelid = c.oid
+                        WHERE NOT t.tgisinternal
+                        AND c.relnamespace = 'public'::regnamespace
+                    ) LOOP
+                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' ENABLE TRIGGER ' || quote_ident(r.tgname);
                     END LOOP;
                 END \$\$;" || log_fail "Не удалось очистить базу ${DB_NAME}"
         fi
