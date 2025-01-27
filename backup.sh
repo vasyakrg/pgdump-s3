@@ -234,6 +234,28 @@ restore() {
         if ! psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME}"; then
             log_step "Создание базы данных ${DB_NAME}"
             createdb -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось создать базу ${DB_NAME}"
+        else
+            log_step "Очистка существующей базы данных ${DB_NAME}"
+            psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" -c "
+                DO \$\$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    -- Отключаем все триггеры
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' DISABLE TRIGGER ALL';
+                    END LOOP;
+
+                    -- Очищаем все таблицы
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+                    END LOOP;
+
+                    -- Включаем триггеры обратно
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' ENABLE TRIGGER ALL';
+                    END LOOP;
+                END \$\$;" || log_fail "Не удалось очистить базу ${DB_NAME}"
         fi
 
         # Восстановление в зависимости от формата
