@@ -279,7 +279,7 @@ restore() {
                             WHERE c.relkind = 'r'
                             AND c.relnamespace = 'public'::regnamespace
                         )
-                        SELECT DISTINCT tablename
+                        SELECT DISTINCT tablename, level
                         FROM deps
                         ORDER BY level DESC
                     ) LOOP
