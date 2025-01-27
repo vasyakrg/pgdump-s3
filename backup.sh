@@ -266,6 +266,7 @@ elif [ "$1" == "restore-cron" ]; then
 elif [ "$1" == "cron" ]; then
     # Скрипт запущен cron
     log_step "Выполнение через cron"
+    generate_rclone_config
     backup
     rotate_backups
     log_success "Cron задача завершена"
@@ -308,6 +309,7 @@ elif [ -n "${BACKUP_CRON_SCHEDULE}" ]; then
 else
     # Выполняем однократный запуск
     log_step "Запуск однократного запуска"
+    generate_rclone_config
     backup
     rotate_backups
     log_success "Однократный запуск завершен"
