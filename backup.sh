@@ -42,6 +42,18 @@ log_step() {
 : "${S3_ACCESS_KEY_ID:=}"
 : "${S3_SECRET_ACCESS_KEY:=}"
 
+# Переменные окружения для восстановления
+: "${RESTORE_S3_BUCKET:=}"
+: "${RESTORE_S3_ENDPOINT:=}"
+: "${RESTORE_S3_PATH_STYLE:=true}"
+: "${RESTORE_S3_REGION:=}"
+: "${RESTORE_S3_PATH:=backups}"
+: "${RESTORE_S3_ACCESS_KEY_ID:=}"
+: "${RESTORE_S3_SECRET_ACCESS_KEY:=}"
+: "${RESTORE_TIMESTAMP:=}" # Если не указано, берем последний бэкап
+: "${RESTORE_DATABASES:=}" # Список баз данных для восстановления через запятую
+: "${RESTORE_CRON_SCHEDULE:=}"
+
 # Генерация rclone конфигурации
 generate_rclone_config() {
     log_step "Генерация конфигурации rclone"
@@ -59,6 +71,25 @@ path_style = ${S3_PATH_STYLE}
 EOF
 
   log_success "Конфигурация rclone создана"
+}
+
+# Функция для генерации конфигурации rclone для восстановления
+generate_restore_rclone_config() {
+    log_step "Генерация конфигурации rclone для восстановления"
+    mkdir -p /root/.config/rclone
+    cat > /root/.config/rclone/rclone.conf <<EOF
+[restore]
+type = s3
+provider = Minio
+env_auth = false
+access_key_id = ${RESTORE_S3_ACCESS_KEY_ID:-$S3_ACCESS_KEY_ID}
+secret_access_key = ${RESTORE_S3_SECRET_ACCESS_KEY:-$S3_SECRET_ACCESS_KEY}
+endpoint = ${RESTORE_S3_ENDPOINT:-$S3_ENDPOINT}
+region = ${RESTORE_S3_REGION:-$S3_REGION}
+path_style = ${RESTORE_S3_PATH_STYLE:-$S3_PATH_STYLE}
+EOF
+
+    log_success "Конфигурация rclone для восстановления создана"
 }
 
 # Устанавливаем переменные окружения для pg_dump
@@ -163,10 +194,76 @@ rotate_backups() {
     fi
 }
 
-generate_rclone_config
+# Функция восстановления из бэкапа
+restore() {
+    log_step "Начало процесса восстановления из бэкапа"
+    RESTORE_DIR="/tmp/restore"
+    mkdir -p "${RESTORE_DIR}"
+
+    # Если RESTORE_TIMESTAMP не указан, получаем последний бэкап
+    if [ -z "${RESTORE_TIMESTAMP}" ]; then
+        log_step "Получение последнего доступного бэкапа"
+        RESTORE_TIMESTAMP=$(rclone lsf "restore:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/" --dirs-only | sort -r | head -n 1 | tr -d '/')
+        if [ -z "${RESTORE_TIMESTAMP}" ]; then
+            log_fail "Не найдено ни одного бэкапа"
+        fi
+        log_success "Найден бэкап: ${RESTORE_TIMESTAMP}"
+    fi
+
+    # Скачиваем файлы бэкапа
+    log_step "Скачивание файлов бэкапа ${RESTORE_TIMESTAMP}"
+    rclone copy "restore:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/${RESTORE_TIMESTAMP}" "${RESTORE_DIR}" || log_fail "Не удалось скачать файлы бэкапа"
+    log_success "Файлы бэкапа скачаны"
+
+    # Восстанавливаем базы данных
+    for BACKUP_FILE in "${RESTORE_DIR}"/*; do
+        DB_NAME=$(basename "${BACKUP_FILE}" | sed 's/\.[^.]*$//')
+
+        # Проверяем, нужно ли восстанавливать эту базу
+        if [ -n "${RESTORE_DATABASES}" ]; then
+            if ! echo "${RESTORE_DATABASES}" | grep -q "${DB_NAME}"; then
+                continue
+            fi
+        fi
+
+        log_step "Восстановление базы данных ${DB_NAME}"
+
+        # Проверяем существование базы
+        if ! psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME}"; then
+            log_step "Создание базы данных ${DB_NAME}"
+            createdb -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось создать базу ${DB_NAME}"
+        fi
+
+        # Восстановление в зависимости от формата
+        if [[ "${BACKUP_FILE}" == *.sql.gz ]]; then
+            pigz -dc "${BACKUP_FILE}" | psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
+        elif [[ "${BACKUP_FILE}" == *.Fc ]]; then
+            pg_restore -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" --clean --if-exists "${BACKUP_FILE}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
+        fi
+
+        log_success "База данных ${DB_NAME} восстановлена"
+    done
+
+    # Очистка
+    log_step "Удаление временных файлов"
+    rm -rf "${RESTORE_DIR}"
+    log_success "Временные файлы удалены"
+}
 
 # Проверяем, как запускается скрипт
-if [ "$1" == "cron" ]; then
+if [ "$1" == "restore" ]; then
+    # Восстановление из бэкапа
+    generate_restore_rclone_config
+    restore
+    log_success "Восстановление завершено"
+    exit 0
+elif [ "$1" == "restore-cron" ]; then
+    # Восстановление через cron
+    generate_restore_rclone_config
+    restore
+    log_success "Восстановление через cron завершено"
+    exit 0
+elif [ "$1" == "cron" ]; then
     # Скрипт запущен cron
     log_step "Выполнение через cron"
     backup
@@ -175,7 +272,28 @@ if [ "$1" == "cron" ]; then
     exit 0
 fi
 
-if [ -n "${BACKUP_CRON_SCHEDULE}" ]; then
+if [ -n "${RESTORE_CRON_SCHEDULE}" ]; then
+    # Настройка cron для восстановления
+    log_step "Настройка cron задачи для восстановления"
+    if ! grep -Fxq "${RESTORE_CRON_SCHEDULE} /usr/local/bin/backup.sh restore-cron" /etc/crontabs/root; then
+        echo "${RESTORE_CRON_SCHEDULE} /usr/local/bin/backup.sh restore-cron" >> /etc/crontabs/root || log_fail "Не удалось записать cron задачу для восстановления"
+        log_success "Cron задача для восстановления добавлена: ${RESTORE_CRON_SCHEDULE}"
+    fi
+
+    if [ -n "${BACKUP_CRON_SCHEDULE}" ]; then
+        # Проверяем наличие задачи в crontab
+        log_step "Настройка cron задачи"
+        if ! grep -Fxq "${BACKUP_CRON_SCHEDULE} /usr/local/bin/backup.sh cron" /etc/crontabs/root; then
+            echo "${BACKUP_CRON_SCHEDULE} /usr/local/bin/backup.sh cron" >> /etc/crontabs/root || log_fail "Не удалось записать cron задачу"
+            log_success "Cron задача добавлена: ${BACKUP_CRON_SCHEDULE}"
+        else
+            log_step "Cron задача уже существует, пропускаем добавление"
+        fi
+    fi
+
+    log_step "Запуск crond"
+    exec crond -f
+elif [ -n "${BACKUP_CRON_SCHEDULE}" ]; then
     # Проверяем наличие задачи в crontab
     log_step "Настройка cron задачи"
     if ! grep -Fxq "${BACKUP_CRON_SCHEDULE} /usr/local/bin/backup.sh cron" /etc/crontabs/root; then

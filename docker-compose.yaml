@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   postgres-backup:
     # image: psql-backup:latest
     container_name: postgres-backup
@@ -7,3 +25,28 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres-restore:
+    container_name: postgres-restore
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: restore
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - restore
+
+volumes:
+  postgres_data:

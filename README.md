@@ -14,6 +14,9 @@
 - Сохранение бэкапов в S3-совместимом хранилище.
 - Ротация старых бэкапов по времени или количеству версий.
 - Автоматическая настройка cron задачи для регулярного резервного копирования.
+- Восстановление баз данных из бэкапа (ручное или по расписанию)
+- Поддержка отдельных настроек S3 для восстановления
+- Восстановление всех баз или выборочное восстановление
 
 ## Переменные окружения
 
@@ -62,6 +65,21 @@
 
 ---
 
+### Настройки восстановления
+
+| Переменная                     | Описание                                           | Значение по умолчанию        |
+|--------------------------------|----------------------------------------------------|------------------------------|
+| `RESTORE_S3_BUCKET`            | S3 бакет для восстановления                        | как в `S3_BUCKET`            |
+| `RESTORE_S3_ENDPOINT`          | Эндпоинт S3 для восстановления                     | как в `S3_ENDPOINT`          |
+| `RESTORE_S3_ACCESS_KEY_ID`     | Ключ доступа к S3 для восстановления               | как в `S3_ACCESS_KEY_ID`     |
+| `RESTORE_S3_SECRET_ACCESS_KEY` | Секретный ключ S3 для восстановления               | как в `S3_SECRET_ACCESS_KEY` |
+| `RESTORE_S3_REGION`            | Регион S3 для восстановления                       | как в `S3_REGION`            |
+| `RESTORE_S3_PATH`              | Путь в S3 для восстановления                       | как в `S3_PATH`              |
+| `RESTORE_S3_PATH_STYLE`        | Path-style доступ для восстановления               | как в `S3_PATH_STYLE`        |
+| `RESTORE_TIMESTAMP`            | Временная метка бэкапа для восстановления          | последний доступный          |
+| `RESTORE_DATABASES`            | Список баз данных для восстановления               | все доступные в бэкапе       |
+| `RESTORE_CRON_SCHEDULE`        | Cron расписание для автоматического восстановления | -                            |
+
 ## Использование
 
 ### Однократный запуск
@@ -98,6 +116,34 @@ services:
     container_name: postgres-backup
     env_file:
       - .env
+```
+
+### Восстановление из бэкапа
+
+1. Однократное восстановление:
+
+```bash
+docker run --rm \
+    --env-file .env \
+    postgres-backup restore
+```
+
+2. Восстановление конкретных баз:
+
+```bash
+docker run --rm \
+    -e RESTORE_DATABASES=mydb1,mydb2 \
+    --env-file .env \
+    postgres-backup restore
+```
+
+3. Восстановление из конкретного бэкапа:
+
+```bash
+docker run --rm \
+    -e RESTORE_TIMESTAMP=20240315120000 \
+    --env-file .env \
+    postgres-backup restore
 ```
 
 ## Пример .env файла
@@ -242,6 +288,8 @@ metadata:
   namespace: default
 spec:
   schedule: "0 3 * * *"  # Запуск каждый день в 3 часа ночи
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       template:
@@ -272,3 +320,81 @@ kubectl apply -f secret.yaml
 kubectl apply -f configmap.yaml
 kubectl apply -f cronjob.yaml
 ```
+
+### CronJob для восстановления
+
+1. Создание секрета для восстановления (если отличается от бэкапа)
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-restore-secret
+  namespace: default
+type: Opaque
+data:
+  POSTGRES_USER: cG9zdGdyZXM=
+  POSTGRES_PASSWORD: cG9zdGdyZXM=
+  POSTGRES_HOST: cG9zdGdyZXM=
+  POSTGRES_PORT: NTQzMg==
+  RESTORE_S3_BUCKET: cmVzdG9yZS1idWNrZXQ=
+  RESTORE_S3_ENDPOINT: aHR0cHM6Ly9zMy1nYXRlLmRvbWFpbi5ydQ==
+  RESTORE_S3_ACCESS_KEY_ID: dGVzdA==
+  RESTORE_S3_SECRET_ACCESS_KEY: dGVzdA==
+  RESTORE_S3_REGION: cnUtbXNr
+```
+
+2. Создание ConfigMap для настроек восстановления
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-restore-config
+  namespace: default
+data:
+  RESTORE_DATABASES: "mydb1,mydb2"  # Опционально, если нужны конкретные базы
+  RESTORE_TIMESTAMP: ""  # Пустое значение для последнего бэкапа
+```
+
+3. Создание CronJob для восстановления
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-restore
+  namespace: default
+spec:
+  schedule: "0 4 * * 0"  # Пример: каждое воскресенье в 4 утра
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: postgres-restore
+            image: hub.realmanual.ru/pub/pgdump-s3:1.0.0
+            args: ["restore"]
+            envFrom:
+            - secretRef:
+                name: postgres-restore-secret
+            - configMapRef:
+                name: postgres-restore-config
+          restartPolicy: OnFailure
+```
+
+4. Применение манифестов:
+
+```bash
+kubectl apply -f restore-secret.yaml
+kubectl apply -f restore-configmap.yaml
+kubectl apply -f restore-cronjob.yaml
+```
+
+Важно: При настройке восстановления по расписанию убедитесь, что:
+
+- Время восстановления не пересекается со временем создания бэкапов
+- У вас есть достаточно ресурсов для выполнения операции
+- Настроено корректное управление конфликтами при восстановлении существующих баз данных
