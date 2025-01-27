@@ -296,7 +296,7 @@ spec:
         spec:
           containers:
           - name: postgres-backup
-            image: hub.realmanual.ru/pub/pgdump-s3:1.0.0
+            image: hub.realmanual.ru/pub/pgdump-s3:2.0.0
             envFrom:
             - secretRef:
                 name: postgres-backup-secret
@@ -375,7 +375,7 @@ spec:
         spec:
           containers:
           - name: postgres-restore
-            image: hub.realmanual.ru/pub/pgdump-s3:1.0.0
+            image: hub.realmanual.ru/pub/pgdump-s3:2.0.0
             args: ["restore"]
             envFrom:
             - secretRef:
