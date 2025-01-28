@@ -217,6 +217,9 @@ restore() {
 
     # Восстанавливаем базы данных
     for BACKUP_FILE in "${RESTORE_DIR}"/*; do
+        # Пропускаем если файл не существует (защита от */*)
+        [ -f "${BACKUP_FILE}" ] || continue
+
         DB_NAME=$(basename "${BACKUP_FILE}" | sed -E 's/\.(sql\.gz|Fc|custom)$//')
         log_step "Найдена база данных ${DB_NAME}"
 
