@@ -150,10 +150,10 @@ docker run --rm \
 
 ```bash
 # PostgreSQL настройки
-PGHOST=localhost
-PGPORT=5432
-PGUSER=postgres
-PGPASSWORD=secret
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=secret
 
 # Базы для бэкапа
 BACKUP_DATABASES=all
@@ -197,9 +197,9 @@ BACKUP_CRON_SCHEDULE=0 2 * * *
 
 ```basg
 docker run --rm \
-    -e PGHOST=db.example.com \
-    -e PGUSER=admin \
-    -e PGPASSWORD=secret \
+    -e POSTGRES_HOST=db.example.com \
+    -e POSTGRES_USER=admin \
+    -e POSTGRES_PASSWORD=secret \
     -e S3_BUCKET=my-bucket \
     -e BACKUP_TYPE=sql \
     -e BACKUP_DATABASES=mydb1,mydb2 \
