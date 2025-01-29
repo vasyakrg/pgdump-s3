@@ -41,6 +41,7 @@ log_step() {
 : "${S3_PATH:=backups}"
 : "${S3_ACCESS_KEY_ID:=}"
 : "${S3_SECRET_ACCESS_KEY:=}"
+: "${HEALTHCHECK_URL:=}"
 
 # Переменные окружения для восстановления
 : "${RESTORE_S3_BUCKET:=}"
@@ -346,6 +347,11 @@ elif [ "$1" == "cron" ]; then
     log_step "Выполнение через cron"
     generate_rclone_config
     backup
+    if [ -n "${HEALTHCHECK_URL}" ]; then
+        log_step "Отправка healthcheck"
+        curl -fsS -m 10 --retry 5 -o /dev/null "${HEALTHCHECK_URL}" || log_fail "Не удалось отправить healthcheck"
+        log_success "Healthcheck отправлен"
+    fi
     rotate_backups
     log_success "Cron задача завершена"
     exit 0
