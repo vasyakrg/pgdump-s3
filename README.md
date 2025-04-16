@@ -31,8 +31,8 @@
 | `POSTGRES_PORT`     | Порт PostgreSQL                                 | `5432`                |
 | `POSTGRES_USER`     | Пользователь PostgreSQL                         | `postgres`            |
 | `POSTGRES_PASSWORD` | Пароль PostgreSQL                               | `password`            |
-| `BACKUP_DATABASES`  | Базы данных для бэкапа (`all` или перечисление) | `all`                 |
-| `EXCLUDE_DB`        | Базы данных, которые нужно исключить            | -                     |
+| `BACKUP_DATABASES`  | База данных для бэкапа `all` или перечисление (ВНИМАНИЕ! если баз больше одной, нужны postgres (root) права) | `all` |
+| `EXCLUDE_DB`        | Базы данных, которые нужно исключить (ВНИМАНИЕ! если указываем исключение, нужны postgres (root) права) | - |
 
 ---
 
