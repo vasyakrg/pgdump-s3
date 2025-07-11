@@ -48,6 +48,30 @@
 | `S3_PATH`              | Путь внутри S3 бакета             | `backups`             |
 | `S3_PATH_STYLE`        | Использование `path-style` режима | `true`                |
 
+Пример полиси для правильной работы сохранения\ротации (проверялось на min.io)
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:DeleteObject",
+                "s3:GetBucketVersioning",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:PutObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::backups",
+                "arn:aws:s3:::backups/*"
+            ]
+        }
+    ]
+}
+```
+
 ---
 
 ### Настройки бэкапа
