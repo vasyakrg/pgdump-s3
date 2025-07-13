@@ -126,8 +126,8 @@ backup() {
             exit 0
         fi
 
-        DATABASES_LIST=$(echo "${DATABASES}" | tr '\n' ',' | sed 's/,$//')
-        log_success "Список баз данных: ${DATABASES_LIST}"
+        # Преобразуем список баз в строку с запятыми
+        DATABASES=$(echo "$DATABASES" | xargs | tr ' ' ',')
     else
         IFS=',' read -ra DATABASES <<< "${BACKUP_DATABASES}"
         if [ -n "${EXCLUDE_DB}" ]; then
@@ -139,46 +139,23 @@ backup() {
             log_warning "Все указанные базы данных исключены из бэкапа. Работа завершена."
             exit 0
         fi
-
-        DATABASES_LIST=$(echo "${DATABASES[@]}" | tr ' ' ',')
-        log_success "Указанные базы данных для бэкапа: ${DATABASES_LIST}"
     fi
 
-    # Изменяем обработку списка баз данных
-    if [ "${BACKUP_DATABASES}" == "all" ]; then
-        # Для случая "all" - обрабатываем каждую строку отдельно
-        echo "${DATABASES}" | while read -r DB; do
-            [ -n "${DB}" ] || continue
-            log_step "Создание бэкапа для базы данных ${DB}"
-            BACKUP_FILE="${BACKUP_DIR}/${DB}.${BACKUP_TYPE}"
+    for DB in "${DATABASES[@]}"; do
+        [ -n "$DB" ] || continue
+        log_step "Создание бэкапа для базы данных ${DB}"
+        BACKUP_FILE="${BACKUP_DIR}/${DB}.${BACKUP_TYPE}"
 
-            if [ "${BACKUP_TYPE}" == "sql" ]; then
-                log_step "Создание SQL бэкапа для базы данных ${DB}"
-                pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
-                log_success "SQL бэкап для базы данных ${DB} создан"
-            else
-                log_step "Создание бэкапа для базы данных ${DB} в формате custom"
-                pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -Fc "${DB}" -f "${BACKUP_FILE}" || log_fail "Не удалось создать бэкап базы ${DB}"
-                log_success "Бэкап для базы данных ${DB} в формате custom создан"
-            fi
-        done
-    else
-        # Для случая с указанными базами - используем массив
-        for DB in "${DATABASES[@]}"; do
-            log_step "Создание бэкапа для базы данных ${DB}"
-            BACKUP_FILE="${BACKUP_DIR}/${DB}.${BACKUP_TYPE}"
-
-            if [ "${BACKUP_TYPE}" == "sql" ]; then
-                log_step "Создание SQL бэкапа для базы данных ${DB}"
-                pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
-                log_success "SQL бэкап для базы данных ${DB} создан"
-            else
-                log_step "Создание бэкапа для базы данных ${DB} в формате custom"
-                pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -Fc "${DB}" -f "${BACKUP_FILE}" || log_fail "Не удалось создать бэкап базы ${DB}"
-                log_success "Бэкап для базы данных ${DB} в формате custom создан"
-            fi
-        done
-    fi
+        if [ "${BACKUP_TYPE}" == "sql" ]; then
+            log_step "Создание SQL бэкапа для базы данных ${DB}"
+            pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
+            log_success "SQL бэкап для базы данных ${DB} создан"
+        else
+            log_step "Создание бэкапа для базы данных ${DB} в формате custom"
+            pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -Fc "${DB}" -f "${BACKUP_FILE}" || log_fail "Не удалось создать бэкап базы ${DB}"
+            log_success "Бэкап для базы данных ${DB} в формате custom создан"
+        fi
+    done
 
     # Архивируем в S3
     FOLDER_NAME=$(date +%Y%m%d%H%M%S)
