@@ -1,4 +1,4 @@
-image: hub.realmanual.ru/images/docker
+image: hub.realmanual.ru/pub/docker
 variables:
   DOCKER_BASEIMAGE: postgres:17.5-alpine
   DOCKER_MAINTAINER: vasyakrg@gmail.com
