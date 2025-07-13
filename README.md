@@ -116,7 +116,7 @@
 ```bash
 docker run --rm \
     --env-file .env \
-    postgres-backup
+    hub.realmanual.ru/pub/pgdump-s3
 ```
 
 2. Скрипт выполнит резервное копирование всех баз данных, загрузит их в S3 и завершит работу.
@@ -129,7 +129,7 @@ docker run --rm \
 ```bash
 docker run --rm \
     --env-file .env \
-    postgres-backup
+    hub.realmanual.ru/pub/pgdump-s3
 ```
 
 3. Контейнер настроит cron и будет ожидать выполнения задач.
@@ -139,7 +139,7 @@ docker run --rm \
 ```yaml
 services:
   postgres-backup:
-    image: psql-backup:latest
+    image: hub.realmanual.ru/pub/pgdump-s3
     container_name: postgres-backup
     env_file:
       - .env
@@ -152,7 +152,7 @@ services:
 ```bash
 docker run --rm \
     --env-file .env \
-    postgres-backup restore
+    hub.realmanual.ru/pub/pgdump-s3 restore
 ```
 
 2. Восстановление конкретных баз:
@@ -161,7 +161,7 @@ docker run --rm \
 docker run --rm \
     -e RESTORE_DATABASES=mydb1,mydb2 \
     --env-file .env \
-    postgres-backup restore
+    hub.realmanual.ru/pub/pgdump-s3 restore
 ```
 
 3. Восстановление из конкретного бэкапа:
@@ -170,7 +170,7 @@ docker run --rm \
 docker run --rm \
     -e RESTORE_TIMESTAMP=20240315120000 \
     --env-file .env \
-    postgres-backup restore
+    hub.realmanual.ru/pub/pgdump-s3 restore
 ```
 
 ## Пример .env файла
