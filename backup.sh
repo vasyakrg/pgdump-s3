@@ -113,39 +113,28 @@ backup() {
             log_warning "На сервере нет ни одной базы данных. Работа завершена."
             exit 0
         fi
-
-        if [ -n "${EXCLUDE_DB}" ]; then
-            log_step "Исключение баз данных: ${EXCLUDE_DB}"
-            for EXCLUDED in $(echo "${EXCLUDE_DB}" | tr ',' ' '); do
-                DATABASES=$(echo "${DATABASES}" | grep -vw "${EXCLUDED}")
-            done
-        fi
-
-        if [ -z "${DATABASES}" ]; then
-            log_warning "Все базы данных исключены из бэкапа. Работа завершена."
-            exit 0
-        fi
-
-        # Преобразуем список баз в строку с запятыми
-        DATABASES=$(echo "$DATABASES" | xargs | tr ' ' ',')
+        # Преобразуем список баз в строку с запятыми и массив
+        DATABASES_CSV=$(echo "$DATABASES" | xargs | tr ' ' ',')
+        IFS=',' read -ra DATABASES <<< "${DATABASES_CSV}"
     else
         IFS=',' read -ra DATABASES <<< "${BACKUP_DATABASES}"
-        if [ -n "${EXCLUDE_DB}" ]; then
-            log_step "Исключение баз данных: ${EXCLUDE_DB}"
-            DATABASES=($(echo "${DATABASES[@]}" | tr ' ' '\n' | grep -vwF -f <(echo "${EXCLUDE_DB}" | tr ',' '\n')))
-        fi
+    fi
 
-        if [ ${#DATABASES[@]} -eq 0 ]; then
-            log_warning "Все указанные базы данных исключены из бэкапа. Работа завершена."
-            exit 0
-        fi
+    # Исключение баз данных
+    if [ -n "${EXCLUDE_DB}" ]; then
+        log_step "Исключение баз данных: ${EXCLUDE_DB}"
+        DATABASES=($(printf "%s\n" "${DATABASES[@]}" | grep -vwF -f <(echo "${EXCLUDE_DB}" | tr ',' '\n')))
+    fi
+
+    if [ ${#DATABASES[@]} -eq 0 ]; then
+        log_warning "Все указанные базы данных исключены из бэкапа. Работа завершена."
+        exit 0
     fi
 
     for DB in "${DATABASES[@]}"; do
         [ -n "$DB" ] || continue
         log_step "Создание бэкапа для базы данных ${DB}"
         BACKUP_FILE="${BACKUP_DIR}/${DB}.${BACKUP_TYPE}"
-
         if [ "${BACKUP_TYPE}" == "sql" ]; then
             log_step "Создание SQL бэкапа для базы данных ${DB}"
             pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB}" | pigz > "${BACKUP_FILE}.gz" || log_fail "Не удалось создать бэкап базы ${DB}"
