@@ -130,6 +130,12 @@ backup() {
         log_warning "Все указанные базы данных исключены из бэкапа. Работа завершена."
         exit 0
     fi
+    
+    # Выводим список баз данных для работы
+    log_step "Базы данных для бэкапа:"
+    for DB in "${DATABASES[@]}"; do
+        [ -n "$DB" ] && echo "  - ${DB}"
+    done
 
     for DB in "${DATABASES[@]}"; do
         [ -n "$DB" ] || continue
