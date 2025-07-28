@@ -1,5 +1,6 @@
-ARG DOCKER_BASEIMAGE=${DOCKER_BASEIMAGE:-postgres:17.5-alpine}
-FROM ${DOCKER_BASEIMAGE}
+FROM postgres:17.5-alpine
+
+LABEL maintainer="vasyakrg@gmail.com"
 
 RUN apk add --no-cache bash pigz rclone curl tzdata \
   && rm -rf /var/cache/apk/*
