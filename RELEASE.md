@@ -1,4 +1,4 @@
-# Релиз версии 2.1.2
+# Релиз версии 2.1.3
 
 ## Как опубликовать новую версию
 
@@ -6,21 +6,21 @@
 
 ```bash
 # Создать тег локально
-git tag v2.1.2
+git tag v2.1.3
 
 # Или с описанием
-git tag -a v2.1.2 -m "Release version 2.1.2 - PostgreSQL backup and restore tool"
+git tag -a v2.1.3 -m "Release version 2.1.3 - PostgreSQL backup and restore tool"
 
 # Отправить тег в репозиторий
-git push origin v2.1.2
+git push origin v2.1.3
 ```
 
 ### 2. GitHub Actions автоматически:
 - Соберет Docker образ для архитектур linux/amd64 и linux/arm64
 - Опубликует образ в GitHub Container Registry (ghcr.io)
 - Создаст следующие теги:
-  - `ghcr.io/[username]/pgdump-s3:v2.1.1` (полная версия)
-  - `ghcr.io/[username]/pgdump-s3:2.1.1` (без префикса v)
+  - `ghcr.io/[username]/pgdump-s3:v2.1.3` (полная версия)
+  - `ghcr.io/[username]/pgdump-s3:2.1.3` (без префикса v)
   - `ghcr.io/[username]/pgdump-s3:2.1` (мажорная.минорная)
   - `ghcr.io/[username]/pgdump-s3:2` (только мажорная)
   - `ghcr.io/[username]/pgdump-s3:latest` (если тег создан в main ветке)
@@ -29,12 +29,12 @@ git push origin v2.1.2
 
 ```bash
 # Использовать конкретную версию
-docker pull ghcr.io/[username]/pgdump-s3:v2.1.1
+docker pull ghcr.io/[username]/pgdump-s3:v2.1.3
 
 # Или использовать в docker-compose.yml
 services:
   postgres-backup:
-    image: ghcr.io/[username]/pgdump-s3:v2.1.1
+    image: ghcr.io/[username]/pgdump-s3:v2.1.3
     # ... остальная конфигурация
 ```
 
@@ -46,7 +46,7 @@ services:
 3. Дождитесь завершения сборки (зеленая галочка)
 4. Проверьте, что образ появился в разделе "Packages"
 
-## Changelog v2.1.1
+## Changelog v2.1.3
 
 ### Новые возможности:
 - ✅ Функция восстановления из бэкапа (restore)
