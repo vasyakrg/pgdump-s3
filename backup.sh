@@ -69,28 +69,10 @@ secret_access_key = ${S3_SECRET_ACCESS_KEY}
 endpoint = ${S3_ENDPOINT}
 region = ${S3_REGION}
 path_style = ${S3_PATH_STYLE}
+no_check_bucket = true
 EOF
 
   log_success "Конфигурация rclone создана"
-}
-
-# Функция для генерации конфигурации rclone для восстановления
-generate_restore_rclone_config() {
-    log_step "Генерация конфигурации rclone для восстановления"
-    mkdir -p /root/.config/rclone
-    cat > /root/.config/rclone/rclone.conf <<EOF
-[restore]
-type = s3
-provider = Minio
-env_auth = false
-access_key_id = ${RESTORE_S3_ACCESS_KEY_ID:-$S3_ACCESS_KEY_ID}
-secret_access_key = ${RESTORE_S3_SECRET_ACCESS_KEY:-$S3_SECRET_ACCESS_KEY}
-endpoint = ${RESTORE_S3_ENDPOINT:-$S3_ENDPOINT}
-region = ${RESTORE_S3_REGION:-$S3_REGION}
-path_style = ${RESTORE_S3_PATH_STYLE:-$S3_PATH_STYLE}
-EOF
-
-    log_success "Конфигурация rclone для восстановления создана"
 }
 
 # Устанавливаем переменные окружения для pg_dump
@@ -130,7 +112,7 @@ backup() {
         log_warning "Все указанные базы данных исключены из бэкапа. Работа завершена."
         exit 0
     fi
-    
+
     # Выводим список баз данных для работы
     log_step "Базы данных для бэкапа:"
     for DB in "${DATABASES[@]}"; do
@@ -325,13 +307,13 @@ restore() {
 # Проверяем, как запускается скрипт
 if [ "$1" == "restore" ]; then
     # Восстановление из бэкапа
-    generate_restore_rclone_config
+    generate_rclone_config
     restore
     log_success "Восстановление завершено"
     exit 0
 elif [ "$1" == "restore-cron" ]; then
     # Восстановление через cron
-    generate_restore_rclone_config
+    generate_rclone_config
     restore
     log_success "Восстановление через cron завершено"
     exit 0

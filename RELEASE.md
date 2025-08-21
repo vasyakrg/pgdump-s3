@@ -1,4 +1,4 @@
-# Релиз версии 2.1.1
+# Релиз версии 2.1.2
 
 ## Как опубликовать новую версию
 
@@ -6,13 +6,13 @@
 
 ```bash
 # Создать тег локально
-git tag v2.1.1
+git tag v2.1.2
 
 # Или с описанием
-git tag -a v2.1.1 -m "Release version 2.1.1 - PostgreSQL backup and restore tool"
+git tag -a v2.1.2 -m "Release version 2.1.2 - PostgreSQL backup and restore tool"
 
 # Отправить тег в репозиторий
-git push origin v2.1.1
+git push origin v2.1.2
 ```
 
 ### 2. GitHub Actions автоматически:
