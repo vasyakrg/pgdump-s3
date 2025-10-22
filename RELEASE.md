@@ -1,4 +1,4 @@
-# Релиз версии 2.1.3
+# Релиз версии 2.1.5
 
 ## Как опубликовать новую версию
 
@@ -6,13 +6,10 @@
 
 ```bash
 # Создать тег локально
-git tag v2.1.3
+git tag v2.1.5
 
 # Или с описанием
-git tag -a v2.1.3 -m "Release version 2.1.3 - PostgreSQL backup and restore tool"
-
-# Отправить тег в репозиторий
-git push origin v2.1.3
+git tag -a v2.1.5 -m "Release version 2.1.5 - PostgreSQL backup and restore tool" && git push origin v2.1.5
 ```
 
 ### 2. GitHub Actions автоматически:
@@ -45,6 +42,10 @@ services:
 2. Найдите workflow "Build and Push Docker Image"
 3. Дождитесь завершения сборки (зеленая галочка)
 4. Проверьте, что образ появился в разделе "Packages"
+
+## Changelog v2.1.5
+
+- ✅ Исправлено скачивание архивов в режиме восстановления
 
 ## Changelog v2.1.4
 

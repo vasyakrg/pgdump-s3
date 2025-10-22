@@ -179,7 +179,7 @@ restore() {
     # Если RESTORE_TIMESTAMP не указан, получаем последний бэкап
     if [ -z "${RESTORE_TIMESTAMP}" ]; then
         log_step "Получение последнего доступного бэкапа"
-        RESTORE_TIMESTAMP=$(rclone lsf "restore:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/" --dirs-only | sort -r | head -n 1 | tr -d '/')
+        RESTORE_TIMESTAMP=$(rclone lsf "s3:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/" --dirs-only | sort -r | head -n 1 | tr -d '/')
         if [ -z "${RESTORE_TIMESTAMP}" ]; then
             log_fail "Не найдено ни одного бэкапа"
         fi
@@ -188,7 +188,7 @@ restore() {
 
     # Скачиваем файлы бэкапа
     log_step "Скачивание файлов бэкапа ${RESTORE_TIMESTAMP}"
-    rclone copy "restore:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/${RESTORE_TIMESTAMP}" "${RESTORE_DIR}" || log_fail "Не удалось скачать файлы бэкапа"
+    rclone copy "s3:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/${RESTORE_TIMESTAMP}" "${RESTORE_DIR}" || log_fail "Не удалось скачать файлы бэкапа"
     log_success "Файлы бэкапа скачаны"
 
     # Восстанавливаем базы данных
