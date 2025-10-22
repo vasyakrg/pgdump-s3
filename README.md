@@ -116,7 +116,7 @@
 ```bash
 docker run --rm \
     --env-file .env \
-    hub.realmanual.ru/pub/pgdump-s3
+    ghcr.io/vasyakrg/pgdump-s3
 ```
 
 2. Скрипт выполнит резервное копирование всех баз данных, загрузит их в S3 и завершит работу.
@@ -129,7 +129,7 @@ docker run --rm \
 ```bash
 docker run --rm \
     --env-file .env \
-    hub.realmanual.ru/pub/pgdump-s3
+    ghcr.io/vasyakrg/pgdump-s3
 ```
 
 3. Контейнер настроит cron и будет ожидать выполнения задач.
@@ -139,7 +139,7 @@ docker run --rm \
 ```yaml
 services:
   postgres-backup:
-    image: hub.realmanual.ru/pub/pgdump-s3
+    image: ghcr.io/vasyakrg/pgdump-s3
     container_name: postgres-backup
     env_file:
       - .env
@@ -152,7 +152,7 @@ services:
 ```bash
 docker run --rm \
     --env-file .env \
-    hub.realmanual.ru/pub/pgdump-s3 restore
+    ghcr.io/vasyakrg/pgdump-s3 restore
 ```
 
 2. Восстановление конкретных баз:
@@ -161,7 +161,7 @@ docker run --rm \
 docker run --rm \
     -e RESTORE_DATABASES=mydb1,mydb2 \
     --env-file .env \
-    hub.realmanual.ru/pub/pgdump-s3 restore
+    ghcr.io/vasyakrg/pgdump-s3 restore
 ```
 
 3. Восстановление из конкретного бэкапа:
@@ -170,7 +170,7 @@ docker run --rm \
 docker run --rm \
     -e RESTORE_TIMESTAMP=20240315120000 \
     --env-file .env \
-    hub.realmanual.ru/pub/pgdump-s3 restore
+    ghcr.io/vasyakrg/pgdump-s3 restore
 ```
 
 ## Пример .env файла
@@ -323,7 +323,7 @@ spec:
         spec:
           containers:
           - name: postgres-backup
-            image: hub.realmanual.ru/pub/pgdump-s3
+            image: ghcr.io/vasyakrg/pgdump-s3
             imagePullPolicy: Always
             envFrom:
             - secretRef:
@@ -370,6 +370,7 @@ data:
   RESTORE_S3_ACCESS_KEY_ID: dGVzdA==
   RESTORE_S3_SECRET_ACCESS_KEY: dGVzdA==
   RESTORE_S3_REGION: cnUtbXNr
+  RESTORE_S3_PATH: YmFja3Vwcw==
 ```
 
 2. Создание ConfigMap для настроек восстановления
@@ -403,7 +404,7 @@ spec:
         spec:
           containers:
           - name: postgres-restore
-            image: hub.realmanual.ru/pub/pgdump-s3
+            image: ghcr.io/vasyakrg/pgdump-s3
             imagePullPolicy: Always
             args: ["restore"]
             envFrom:
