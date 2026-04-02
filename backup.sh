@@ -7,20 +7,25 @@ GREEN="\033[0;32m"
 RED="\033[0;31m"
 RESET="\033[0m"
 
+# Timestamp for log messages
+log_timestamp() {
+    date +"%Y-%m-%d %H:%M:%S"
+}
+
 # Функция для логирования успешных шагов
 log_success() {
-    echo -e "${GREEN}[ OK ]${RESET} $1"
+    echo -e "$(log_timestamp) ${GREEN}[ OK ]${RESET} $1"
 }
 
 # Функция для логирования ошибок
 log_fail() {
-    echo -e "${RED}[ Fail ]${RESET} $1"
+    echo -e "$(log_timestamp) ${RED}[ Fail ]${RESET} $1"
     exit 1
 }
 
 # Функция для логирования обычных шагов
 log_step() {
-    echo -e "[...] $1"
+    echo -e "$(log_timestamp) [...] $1"
 }
 
 # Переменные окружения
@@ -54,6 +59,8 @@ log_step() {
 : "${RESTORE_TIMESTAMP:=}" # Если не указано, берем последний бэкап
 : "${RESTORE_DATABASES:=}" # Список баз данных для восстановления через запятую
 : "${RESTORE_CRON_SCHEDULE:=}"
+: "${POST_RESTORE_SCRIPTS_DIR:=}" # Path to directory with *.sql scripts to run after restore
+: "${POST_RESTORE_ENABLED:=false}" # Enable post-restore SQL scripts execution
 
 # Генерация rclone конфигурации
 generate_rclone_config() {
@@ -298,10 +305,58 @@ restore() {
         log_success "База данных ${DB_NAME} восстановлена"
     done
 
+    # Post-restore scripts
+    if [ "${POST_RESTORE_ENABLED}" == "true" ] && [ -n "${POST_RESTORE_SCRIPTS_DIR}" ]; then
+        post_restore
+    fi
+
     # Очистка
     log_step "Удаление временных файлов"
     rm -rf "${RESTORE_DIR}"
     log_success "Временные файлы удалены"
+}
+
+# Post-restore: apply SQL scripts from mounted directory
+post_restore() {
+    log_step "Запуск post-restore скриптов из ${POST_RESTORE_SCRIPTS_DIR}"
+
+    if [ ! -d "${POST_RESTORE_SCRIPTS_DIR}" ]; then
+        log_fail "Директория post-restore скриптов не найдена: ${POST_RESTORE_SCRIPTS_DIR}"
+    fi
+
+    SQL_FILES=$(find "${POST_RESTORE_SCRIPTS_DIR}" -name "*.sql" -type f | sort)
+
+    if [ -z "${SQL_FILES}" ]; then
+        log_step "SQL скрипты не найдены в ${POST_RESTORE_SCRIPTS_DIR}"
+        return
+    fi
+
+    # Determine target databases for post-restore
+    if [ -n "${RESTORE_DATABASES}" ]; then
+        IFS=',' read -ra TARGET_DBS <<< "${RESTORE_DATABASES}"
+    else
+        TARGET_DBS=()
+        for BACKUP_FILE in "${RESTORE_DIR}"/*; do
+            [ -f "${BACKUP_FILE}" ] || continue
+            DB_NAME=$(basename "${BACKUP_FILE}" | sed -E 's/\.(sql\.gz|Fc|custom)$//')
+            TARGET_DBS+=("${DB_NAME}")
+        done
+    fi
+
+    for DB in "${TARGET_DBS[@]}"; do
+        [ -n "$DB" ] || continue
+        log_step "Применение post-restore скриптов к базе ${DB}"
+        while IFS= read -r SQL_FILE; do
+            log_step "Выполнение $(basename "${SQL_FILE}") на базе ${DB}"
+            psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB}" \
+                --set ON_ERROR_STOP=1 \
+                -v "statement_timeout=60000" \
+                -f "${SQL_FILE}" || log_fail "Ошибка выполнения $(basename "${SQL_FILE}") на базе ${DB}"
+            log_success "$(basename "${SQL_FILE}") выполнен на базе ${DB}"
+        done <<< "${SQL_FILES}"
+    done
+
+    log_success "Post-restore скрипты выполнены"
 }
 
 # Проверяем, как запускается скрипт

@@ -1,4 +1,4 @@
-# Релиз версии 2.1.5
+# Релиз версии 2.2.0
 
 ## Как опубликовать новую версию
 
@@ -6,10 +6,10 @@
 
 ```bash
 # Создать тег локально
-git tag v2.1.5
+git tag v2.2.0
 
 # Или с описанием
-git tag -a v2.1.5 -m "Release version 2.1.5 - PostgreSQL backup and restore tool" && git push origin v2.1.5
+git tag -a v2.2.0 -m "Release version 2.2.0 - PostgreSQL backup and restore tool" && git push origin v2.2.0
 ```
 
 ### 2. GitHub Actions автоматически:
@@ -42,6 +42,16 @@ services:
 2. Найдите workflow "Build and Push Docker Image"
 3. Дождитесь завершения сборки (зеленая галочка)
 4. Проверьте, что образ появился в разделе "Packages"
+
+## Changelog v2.2.0
+
+### Новые возможности:
+- ✅ Post-restore: выполнение SQL скриптов после восстановления базы
+- ✅ Поддержка монтирования директории с SQL скриптами для post-обработки
+- ✅ Примеры post-restore скриптов (создание пользователей, анонимизация данных)
+
+### Улучшения:
+- ✅ Добавлены временные метки (timestamp) в логирование
 
 ## Changelog v2.1.5
 
