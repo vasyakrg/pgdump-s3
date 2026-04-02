@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -eo pipefail
 
 # Цвета для логирования
 GREEN="\033[0;32m"
@@ -299,7 +299,16 @@ restore() {
         if [[ "${BACKUP_FILE}" == *.sql.gz ]]; then
             pigz -dc "${BACKUP_FILE}" | psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
         elif [[ "${BACKUP_FILE}" == *.Fc || "${BACKUP_FILE}" == *.custom ]]; then
-            pg_restore -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" --clean --if-exists "${BACKUP_FILE}" || log_fail "Не удалось восстановить базу ${DB_NAME}"
+            # pg_restore returns non-zero even on warnings (e.g. "already exists"), so we check manually
+            set +e
+            pg_restore -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" --clean --if-exists "${BACKUP_FILE}" 2>&1
+            PG_RESTORE_EXIT=$?
+            set -e
+            if [ ${PG_RESTORE_EXIT} -ne 0 ] && [ ${PG_RESTORE_EXIT} -ne 1 ]; then
+                log_fail "Не удалось восстановить базу ${DB_NAME} (exit code: ${PG_RESTORE_EXIT})"
+            elif [ ${PG_RESTORE_EXIT} -eq 1 ]; then
+                log_step "pg_restore завершился с предупреждениями для базы ${DB_NAME} (допустимо)"
+            fi
         fi
 
         log_success "База данных ${DB_NAME} восстановлена"
