@@ -407,7 +407,25 @@ data:
   RESTORE_TIMESTAMP: ""  # Пустое значение для последнего бэкапа
 ```
 
-3. Создание CronJob для восстановления
+3. (Опционально) Создание ConfigMap с post-restore SQL скриптами
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-post-restore-scripts
+  namespace: default
+data:
+  01_replace_email_domains.sql: |
+    -- Replace all email domains in customers table with ya.ru
+    UPDATE customers
+    SET email = CASE
+        WHEN email LIKE '%@%' THEN CONCAT(SPLIT_PART(email, '@', 1), '@ya.ru')
+        ELSE CONCAT(email, '@ya.ru')
+    END;
+```
+
+4. Создание CronJob для восстановления
 
 ```yaml
 apiVersion: batch/v1
@@ -433,14 +451,29 @@ spec:
                 name: postgres-restore-secret
             - configMapRef:
                 name: postgres-restore-config
+            # Раскомментируйте для включения post-restore скриптов
+            # env:
+            # - name: POST_RESTORE_ENABLED
+            #   value: "true"
+            # - name: POST_RESTORE_SCRIPTS_DIR
+            #   value: "/post-restore"
+            # volumeMounts:
+            # - name: post-restore-scripts
+            #   mountPath: /post-restore
+            #   readOnly: true
           restartPolicy: OnFailure
+          # volumes:
+          # - name: post-restore-scripts
+          #   configMap:
+          #     name: postgres-post-restore-scripts
 ```
 
-4. Применение манифестов:
+5. Применение манифестов:
 
 ```bash
 kubectl apply -f restore-secret.yaml
 kubectl apply -f restore-configmap.yaml
+# kubectl apply -f post-restore-scripts-configmap.yaml  # если используется post-restore
 kubectl apply -f restore-cronjob.yaml
 ```
 
