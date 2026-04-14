@@ -6,10 +6,10 @@
 
 ```bash
 # Создать тег локально
-git tag v2.2.0
+git tag v2.2.1
 
 # Или с описанием
-git tag -a v2.2.0 -m "Release version 2.2.0 - PostgreSQL backup and restore tool" && git push origin v2.2.0
+git tag -a v2.2.1 -m "Release version 2.2.1 - PostgreSQL backup and restore tool" && git push origin v2.2.1
 ```
 
 ### 2. GitHub Actions автоматически:
