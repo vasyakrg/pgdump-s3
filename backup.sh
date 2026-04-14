@@ -63,23 +63,40 @@ log_step() {
 : "${POST_RESTORE_ENABLED:=false}" # Enable post-restore SQL scripts execution
 
 # Генерация rclone конфигурации
+# $1 = "restore" to use RESTORE_S3_* variables as primary
 generate_rclone_config() {
-    log_step "Генерация конфигурации rclone"
+    local MODE="${1:-backup}"
+    log_step "Генерация конфигурации rclone (режим: ${MODE})"
     mkdir -p /root/.config/rclone
+
+    if [ "${MODE}" == "restore" ]; then
+        local RCLONE_ACCESS_KEY="${RESTORE_S3_ACCESS_KEY_ID:-$S3_ACCESS_KEY_ID}"
+        local RCLONE_SECRET_KEY="${RESTORE_S3_SECRET_ACCESS_KEY:-$S3_SECRET_ACCESS_KEY}"
+        local RCLONE_ENDPOINT="${RESTORE_S3_ENDPOINT:-$S3_ENDPOINT}"
+        local RCLONE_REGION="${RESTORE_S3_REGION:-$S3_REGION}"
+        local RCLONE_PATH_STYLE="${RESTORE_S3_PATH_STYLE:-$S3_PATH_STYLE}"
+    else
+        local RCLONE_ACCESS_KEY="${S3_ACCESS_KEY_ID}"
+        local RCLONE_SECRET_KEY="${S3_SECRET_ACCESS_KEY}"
+        local RCLONE_ENDPOINT="${S3_ENDPOINT}"
+        local RCLONE_REGION="${S3_REGION}"
+        local RCLONE_PATH_STYLE="${S3_PATH_STYLE}"
+    fi
+
     cat > /root/.config/rclone/rclone.conf <<EOF
 [s3]
 type = s3
 provider = Minio
 env_auth = false
-access_key_id = ${S3_ACCESS_KEY_ID}
-secret_access_key = ${S3_SECRET_ACCESS_KEY}
-endpoint = ${S3_ENDPOINT}
-region = ${S3_REGION}
-path_style = ${S3_PATH_STYLE}
+access_key_id = ${RCLONE_ACCESS_KEY}
+secret_access_key = ${RCLONE_SECRET_KEY}
+endpoint = ${RCLONE_ENDPOINT}
+region = ${RCLONE_REGION}
+path_style = ${RCLONE_PATH_STYLE}
 no_check_bucket = true
 EOF
 
-  log_success "Конфигурация rclone создана"
+    log_success "Конфигурация rclone создана"
 }
 
 # Устанавливаем переменные окружения для pg_dump
@@ -219,7 +236,9 @@ restore() {
         # Проверяем существование базы
         if ! psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME}"; then
             log_step "Создание базы данных ${DB_NAME}"
-            createdb -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" || log_fail "Не удалось создать базу ${DB_NAME}"
+            if ! createdb -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${DB_NAME}" 2>/dev/null; then
+                log_step "База ${DB_NAME} уже существует, продолжаем восстановление"
+            fi
         else
             log_step "Очистка существующей базы данных ${DB_NAME}"
             psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d "${DB_NAME}" -c "
@@ -371,13 +390,13 @@ post_restore() {
 # Проверяем, как запускается скрипт
 if [ "$1" == "restore" ]; then
     # Восстановление из бэкапа
-    generate_rclone_config
+    generate_rclone_config restore
     restore
     log_success "Восстановление завершено"
     exit 0
 elif [ "$1" == "restore-cron" ]; then
     # Восстановление через cron
-    generate_rclone_config
+    generate_rclone_config restore
     restore
     log_success "Восстановление через cron завершено"
     exit 0
