@@ -1,4 +1,4 @@
-# Релиз версии 2.2.0
+# Релиз версии 2.3.0
 
 ## Как опубликовать новую версию
 
@@ -6,10 +6,10 @@
 
 ```bash
 # Создать тег локально
-git tag v2.2.1
+git tag v2.3.0
 
 # Или с описанием
-git tag -a v2.2.1 -m "Release version 2.2.1 - PostgreSQL backup and restore tool" && git push origin v2.2.1
+git tag -a v2.3.0 -m "Release version 2.3.0 - PostgreSQL backup and restore tool" && git push origin v2.3.0
 ```
 
 ### 2. GitHub Actions автоматически:
@@ -42,6 +42,27 @@ services:
 2. Найдите workflow "Build and Push Docker Image"
 3. Дождитесь завершения сборки (зеленая галочка)
 4. Проверьте, что образ появился в разделе "Packages"
+
+## Changelog v2.3.0
+
+### Новые возможности:
+- ✅ Бэкап глобальных ролей (пользователей) и их прав через `BACKUP_ROLES` (по умолчанию выключено, `pg_dumpall --roles-only` → `roles.sql.gz`)
+- ✅ Восстановление ролей через `RESTORE_ROLES` — применяется **до** восстановления баз, чтобы object-level `GRANT` ложились на существующие роли
+- ✅ Исключение суперпользователя/root из бэкапа ролей через `BACKUP_ROLES_EXCLUDE` (по умолчанию `POSTGRES_USER`)
+- ✅ Обфускация паролей восстановленных LOGIN-пользователей единым паролем через `RESTORE_ROLES_PASSWORD`
+
+### Улучшения:
+- ✅ При нехватке прав у `POSTGRES_USER` на `pg_dumpall --roles-only` бэкап ролей пропускается с записью в лог — скрипт не падает
+- ✅ Ошибки восстановления/смены пароля ролей трактуются как предупреждения и не прерывают процесс
+- ✅ Файл `roles.sql.gz` исключён из цикла восстановления баз и post-restore (не трактуется как база)
+
+## Changelog v2.2.1
+
+### Улучшения:
+- ✅ rclone конфиг использует RESTORE_S3_* переменные в режиме восстановления
+- ✅ `set -eo pipefail` для надёжного перехвата ошибок в pipe (pg_dump | pigz)
+- ✅ pg_restore корректно обрабатывает предупреждения (exit code 1) без остановки процесса
+- ✅ createdb не прерывает restore если база уже существует
 
 ## Changelog v2.2.0
 

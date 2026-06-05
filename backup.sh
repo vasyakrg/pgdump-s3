@@ -62,6 +62,12 @@ log_step() {
 : "${POST_RESTORE_SCRIPTS_DIR:=}" # Path to directory with *.sql scripts to run after restore
 : "${POST_RESTORE_ENABLED:=false}" # Enable post-restore SQL scripts execution
 
+# Бэкап/восстановление глобальных ролей (пользователей) и их прав
+: "${BACKUP_ROLES:=false}" # Включить бэкап глобальных ролей и привилегий (pg_dumpall --roles-only)
+: "${BACKUP_ROLES_EXCLUDE:=$POSTGRES_USER}" # Роли через запятую, которые не бэкапим (по умолчанию суперпользователь/root)
+: "${RESTORE_ROLES:=false}" # Включить восстановление ролей перед восстановлением баз
+: "${RESTORE_ROLES_PASSWORD:=}" # Если задано — единый новый пароль для всех восстановленных LOGIN-пользователей (обфускация)
+
 # Генерация rclone конфигурации
 # $1 = "restore" to use RESTORE_S3_* variables as primary
 generate_rclone_config() {
@@ -158,6 +164,39 @@ backup() {
         fi
     done
 
+    # Бэкап глобальных ролей (пользователей) и их прав
+    if [ "${BACKUP_ROLES}" == "true" ]; then
+        log_step "Создание бэкапа глобальных ролей и прав пользователей"
+        # pg_dumpall --roles-only требует прав на чтение ролей; при их отсутствии не падаем, а пропускаем
+        set +e
+        ROLES_DUMP=$(pg_dumpall -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" --roles-only 2>&1)
+        PG_DUMPALL_EXIT=$?
+        set -e
+        if [ ${PG_DUMPALL_EXIT} -ne 0 ]; then
+            log_step "Пропуск бэкапа ролей: недостаточно прав у пользователя ${POSTGRES_USER} для pg_dumpall --roles-only (роли не сохранены)"
+        else
+            # Исключаем суперпользователя/root и прочие указанные роли из дампа
+            IFS=',' read -ra EXCL_ROLES <<< "${BACKUP_ROLES_EXCLUDE}"
+            set +e
+            for r in "${EXCL_ROLES[@]}"; do
+                [ -n "$r" ] || continue
+                ROLES_DUMP=$(printf '%s\n' "${ROLES_DUMP}" \
+                    | grep -vE "^(CREATE|ALTER|DROP) ROLE \"?${r}\"?( |;)" \
+                    | grep -vE "^GRANT \"?${r}\"? TO " \
+                    | grep -vE "^GRANT .+ TO \"?${r}\"?( |;|\$)" \
+                    | sed -E "s/ GRANTED BY \"?${r}\"?//g")
+            done
+            set -e
+            # Вывод списка ролей для бэкапа
+            log_step "Роли для бэкапа:"
+            printf '%s\n' "${ROLES_DUMP}" | grep -E '^CREATE ROLE ' \
+                | sed -E 's/^CREATE ROLE "?([^" ]+)"?.*/\1/' | sort -u \
+                | while read -r r; do [ -n "$r" ] && echo "  - ${r}"; done
+            printf '%s\n' "${ROLES_DUMP}" | pigz > "${BACKUP_DIR}/roles.sql.gz" || log_fail "Не удалось сохранить бэкап ролей"
+            log_success "Бэкап ролей и прав создан (исключены: ${BACKUP_ROLES_EXCLUDE})"
+        fi
+    fi
+
     # Архивируем в S3
     FOLDER_NAME=$(date +%Y%m%d%H%M%S)
     log_step "Копирование бэкапов в S3"
@@ -215,10 +254,64 @@ restore() {
     rclone copy "s3:${RESTORE_S3_BUCKET:-$S3_BUCKET}/${RESTORE_S3_PATH:-$S3_PATH}/${RESTORE_TIMESTAMP}" "${RESTORE_DIR}" || log_fail "Не удалось скачать файлы бэкапа"
     log_success "Файлы бэкапа скачаны"
 
+    # Восстановление глобальных ролей (пользователей) и их прав ДО восстановления баз,
+    # чтобы object-level GRANT внутри дампов баз применялись к уже существующим ролям
+    if [ "${RESTORE_ROLES}" == "true" ]; then
+        ROLES_FILE="${RESTORE_DIR}/roles.sql.gz"
+        if [ -f "${ROLES_FILE}" ]; then
+            # Вывод списка ролей для восстановления
+            log_step "Роли для восстановления:"
+            pigz -dc "${ROLES_FILE}" | grep -E '^CREATE ROLE ' \
+                | sed -E 's/^CREATE ROLE "?([^" ]+)"?.*/\1/' | sort -u \
+                | while read -r r; do [ -n "$r" ] && echo "  - ${r}"; done
+
+            log_step "Восстановление глобальных ролей и прав пользователей"
+            set +e
+            pigz -dc "${ROLES_FILE}" | psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d postgres
+            ROLES_EXIT=$?
+            set -e
+            if [ ${ROLES_EXIT} -ne 0 ]; then
+                log_step "Восстановление ролей завершено с предупреждениями (допустимо: роль уже существует или недостаточно прав у ${POSTGRES_USER})"
+            fi
+            log_success "Роли и права пользователей восстановлены"
+
+            # Обфускация: единый новый пароль для всех восстановленных LOGIN-пользователей
+            if [ -n "${RESTORE_ROLES_PASSWORD}" ]; then
+                log_step "Обфускация паролей восстановленных пользователей"
+                # Экранируем одинарные кавычки в пароле для SQL-литерала ('' = ')
+                ESC_PW=${RESTORE_ROLES_PASSWORD//\'/\'\'}
+                # LOGIN-роли из дампа (суперпользователь/root уже исключён на этапе бэкапа)
+                LOGIN_ROLES=$(pigz -dc "${ROLES_FILE}" \
+                    | grep -E '^ALTER ROLE ' \
+                    | grep -w LOGIN \
+                    | sed -E 's/^ALTER ROLE "?([^" ]+)"?.*/\1/' \
+                    | sort -u)
+                while IFS= read -r role; do
+                    [ -n "$role" ] || continue
+                    set +e
+                    psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" -d postgres \
+                        -c "ALTER ROLE \"${role}\" WITH LOGIN PASSWORD '${ESC_PW}';" >/dev/null 2>&1
+                    PW_EXIT=$?
+                    set -e
+                    if [ ${PW_EXIT} -ne 0 ]; then
+                        log_step "Не удалось сменить пароль роли ${role} (пропуск)"
+                    else
+                        log_success "Пароль роли ${role} обфусцирован"
+                    fi
+                done <<< "${LOGIN_ROLES}"
+            fi
+        else
+            log_step "Файл ролей roles.sql.gz не найден в бэкапе, пропуск восстановления ролей"
+        fi
+    fi
+
     # Восстанавливаем базы данных
     for BACKUP_FILE in "${RESTORE_DIR}"/*; do
         # Пропускаем если файл не существует (защита от */*)
         [ -f "${BACKUP_FILE}" ] || continue
+
+        # Пропускаем дамп ролей — это не база данных
+        [ "$(basename "${BACKUP_FILE}")" == "roles.sql.gz" ] && continue
 
         DB_NAME=$(basename "${BACKUP_FILE}" | sed -E 's/\.(sql\.gz|Fc|custom)$//')
         log_step "Найдена база данных ${DB_NAME}"
@@ -366,6 +459,7 @@ post_restore() {
         TARGET_DBS=()
         for BACKUP_FILE in "${RESTORE_DIR}"/*; do
             [ -f "${BACKUP_FILE}" ] || continue
+            [ "$(basename "${BACKUP_FILE}")" == "roles.sql.gz" ] && continue
             DB_NAME=$(basename "${BACKUP_FILE}" | sed -E 's/\.(sql\.gz|Fc|custom)$//')
             TARGET_DBS+=("${DB_NAME}")
         done

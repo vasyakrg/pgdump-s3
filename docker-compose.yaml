@@ -55,8 +55,8 @@ services:
       - .env
     environment:
       POSTGRES_HOST: postgres2
-    volumes:
-      - ./post-restore:/post-restore:ro
+    # volumes:
+    #   - ./post-restore:/post-restore:ro
     depends_on:
       postgres2:
         condition: service_healthy

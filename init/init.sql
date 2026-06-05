@@ -74,3 +74,41 @@ CREATE INDEX idx_customers_email ON customers(email);
 CREATE INDEX idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_order_date ON orders(order_date);
+
+-- Генерация 10 тестовых пользователей с разными правами
+-- (для проверки бэкапа/восстановления ролей: BACKUP_ROLES / RESTORE_ROLES)
+DO $$
+DECLARE
+    i INTEGER;
+    role_name TEXT;
+BEGIN
+    FOR i IN 1..10 LOOP
+        role_name := 'test_user_' || LPAD(i::TEXT, 2, '0');
+
+        -- Пересоздаём роль идемпотентно
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+            EXECUTE format('DROP ROLE %I', role_name);
+        END IF;
+
+        -- LOGIN-роль с паролем
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', role_name, 'Passw0rd_' || i);
+
+        -- Разные наборы прав в зависимости от номера пользователя
+        IF i % 3 = 0 THEN
+            -- read-write
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON customers, orders TO %I', role_name);
+            EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', role_name);
+        ELSIF i % 3 = 1 THEN
+            -- read-only
+            EXECUTE format('GRANT SELECT ON customers, orders TO %I', role_name);
+        ELSE
+            -- доступ только к customers
+            EXECUTE format('GRANT SELECT, INSERT ON customers TO %I', role_name);
+        END IF;
+    END LOOP;
+END $$;
+
+-- Групповая (NOLOGIN) роль и членство — для проверки восстановления прав
+CREATE ROLE test_readers NOLOGIN;
+GRANT SELECT ON customers, orders TO test_readers;
+GRANT test_readers TO test_user_01, test_user_04, test_user_07, test_user_10;
